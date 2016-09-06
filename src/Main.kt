@@ -1,3 +1,3 @@
-/**
- * Created by antonyalkmim on 06/09/16.
- */
+fun main(args : Array<String>){
+    println("A chat comming soon!")
+}
