@@ -13,18 +13,19 @@ import java.util.*
 fun main(args : Array<String>){
 
     val client = Client("127.0.0.1", 9999)
-    client.connect("antony")
 
-    while(!client.connected){ }
+    println("Qual seu nickname: ")
+    val `in` = BufferedReader(InputStreamReader(System.`in`))
+    val username = `in`.readLine()
+    client.connect(username)
 
-    while (client.connected) {
+    while(client.connected == null){ }
+
+    while (client.connected!!) {
         val `in` = BufferedReader(InputStreamReader(System.`in`))
         val message = `in`.readLine()
 
-        if (!message.contains("::")) continue
-
-        val messageParts = message.split("::")
-        client.sendMessage(Message(client.username!!, messageParts[0], messageParts[1]))
+        client.sendMessage(message)
     }
 }
 
@@ -36,14 +37,13 @@ class Client (val host:String, val port : Int){
     var username : String? = null
         private set
 
-    var connected : Boolean = false
+    var connected : Boolean? = null
         private set
 
     fun connect(username : String){
         this.username = username
 
         readClient = Socket(host, port)
-        val keyboard = Scanner(System.`in`)
         val out = PrintStream(readClient?.outputStream)
 
         //connect
@@ -51,10 +51,9 @@ class Client (val host:String, val port : Int){
 
         //ler resposta da tentatica de conexao
         val s = Scanner(readClient?.inputStream)
-        var response = ""
         while(!s.hasNextLine()){}
 
-        response = s.nextLine()
+        var response = s.nextLine()
 
         if (response.length > 6) { //usuario rejeitado
             println("Usuario duplicado!")
@@ -74,13 +73,14 @@ class Client (val host:String, val port : Int){
             val s = Scanner(server)
             while(s.hasNextLine()){
                 val message = Message.Companion.parseMessage(s.nextLine())
-                println("${message?.usernameFrom} diz: ${message?.text}")
+                println("${message.usernameFrom} diz: ${message.text}")
             }
         }
     }
 
-    fun sendMessage(message: Message) {
-        PrintStream(writeClient?.outputStream).println(message)
+    fun sendMessage(message: String) {
+        PrintStream(writeClient?.outputStream)
+                .println(Message(username!!, message))
     }
 
 }

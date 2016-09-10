@@ -8,61 +8,55 @@ import kotlin.concurrent.thread
 
 
 fun main(args : Array<String>){
-
-    val server = Server(9999)
-
-    var clients : List<ChatClient> = emptyList()
-
-    while (true){
-        if(server.hasNewClient){
-            clients += server.getNewClient()
-        }
-
-        var messages = emptyList<Message>()
-
-        clients.forEach { client ->
-            if (client.hasMessage){
-                messages += client.readMessage()
-            }
-        }
-
-        //send messages
-        messages.forEach { message ->
-            clients
-                    .filter { it.username == message.usernameTo }
-                    .forEach { client ->
-                        client.writeMessage(message)
-                    }
-        }
-
-    }
-
+    Server(9999).start()
 }
 
 
 class Server(val port : Int){
 
     private var connectedClients : List<ChatClient> = emptyList()
-    private var clientQueue : Queue<ChatClient> = LinkedList()
-    private val listener : Thread
+    private var listener : Thread? = null
 
-    init{
+    fun start(){
         listener = thread {
             listenConnections()
         }
-    }
 
 
-    var hasNewClient : Boolean = false
-        get() {
-            synchronized(clientQueue){
-                return clientQueue.size > 0
+        while (true){
+            var messages = emptyList<Message>()
+
+            //verificar se algum usuario desconectou
+            val clientsClosed = connectedClients.filter { it.isClosed }
+            if (clientsClosed.size > 0) {
+                connectedClients = connectedClients.filter { !it.isClosed }
+
+                clientsClosed.forEach { client ->
+                    messages += Message("Server", "${client.username} saiu!")
+                }
+            }
+
+
+
+            connectedClients.forEach { client ->
+                if (client.hasMessage){
+                    messages += client.readMessage()
+                }
+            }
+
+            //send messages
+            messages.forEach { message ->
+                connectedClients
+                        .filter { it.username != message.usernameFrom } //nao mandar a mensagem para quem esta enviando
+                        .forEach { client -> client.writeMessage(message) }
             }
         }
 
+    }
+
     private fun listenConnections(){
 
-        ServerSocket(9999).use { server ->
+        ServerSocket(port).use { server ->
             println("Server running on port ${server.localPort}!")
 
             while (true) {
@@ -82,12 +76,17 @@ class Server(val port : Int){
                 sendSuccess(client, privateListener.localPort)
 
                 //confirmar conexao em servidor privado
-                val writeClient = privateListener.accept()
+                val readClient = privateListener.accept()
                 privateListener.close()
 
-                val chatClient = ChatClient(connectMessage.username, writeClient, client)
-                synchronized(clientQueue){
-                    clientQueue.add(chatClient)
+                val chatClient = ChatClient(connectMessage.username, readClient, client)
+                synchronized(connectedClients){
+                    connectedClients += chatClient
+
+                    //informar todos os usuarios que existe um novo usuario
+                    connectedClients.forEach { client ->
+                        client.writeMessage(Message("Server", "${chatClient.username} entrou!"))
+                    }
                 }
             }
         }
@@ -95,14 +94,9 @@ class Server(val port : Int){
     }
 
     fun dispose(){
-        listener.stop()
+        listener?.stop()
     }
 
-    fun getNewClient() : ChatClient {
-        synchronized(clientQueue){
-            return clientQueue.remove()
-        }
-    }
 
     private fun sendSuccess(client: Socket, localPort: Int) {
         //escrever a porta que foi aberta para a conexao prval text : Stringivada
@@ -128,6 +122,9 @@ class ChatClient(val username: String,
                  val readClient: Socket,
                  val writeClient : Socket){
 
+    var isClosed : Boolean = false
+        private set
+
     var hasMessage = false
         private set
 
@@ -136,7 +133,7 @@ class ChatClient(val username: String,
 
     init {
         thread {
-            while (true){
+            while (!readClient.isClosed){
                 val s = Scanner(readClient.inputStream)
                 while (s.hasNextLine()){
                     synchronized(hasMessage){
@@ -146,14 +143,20 @@ class ChatClient(val username: String,
                 }
                 s.close()
             }
+            readClient.close()
+            writeClient.close()
+            isClosed = true
         }
     }
 
 
     fun readMessage() : Message {
         synchronized(hasMessage) {
+
+            //readLine = usernameFrom::mensagem
+
             val messageParts = readLine!!.split("::")
-            val message = Message(messageParts[0], messageParts[1], messageParts[2])
+            val message = Message(messageParts[0], messageParts[1])
 
             readLine = null
             hasMessage = false
@@ -171,21 +174,18 @@ class ChatClient(val username: String,
 
 
 data class ConnectMessage(val username:String)
+
 data class Message(val usernameFrom:String,
-                   val usernameTo:String,
                    val text : String) {
+
     override fun toString(): String {
-        return "$usernameFrom::$usernameTo::$text"
+        return "$usernameFrom::$text"
     }
 
     companion object {
-        fun parseMessage(string: String) : Message? {
-            val messageParts = string.split("::")
-
-            if (messageParts.size != 3)
-                return null
-
-            return Message(messageParts[0],messageParts[1], messageParts[2])
+        fun parseMessage(string : String) : Message {
+            val stringParts = string.split("::")
+            return Message(stringParts[0], stringParts[1])
         }
     }
 
