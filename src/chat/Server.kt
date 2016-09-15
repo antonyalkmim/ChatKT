@@ -47,7 +47,7 @@ class Server(val port : Int){
             //send messages
             messages.forEach { message ->
                 connectedClients
-                        .filter { it.username != message.usernameFrom } //nao mandar a mensagem para quem esta enviando
+                        .filter { it.username != message.usernameFrom && !it.isClosed } //nao mandar a mensagem para quem esta enviando
                         .forEach { client -> client.writeMessage(message) }
             }
         }
@@ -80,23 +80,16 @@ class Server(val port : Int){
                 privateListener.close()
 
                 val chatClient = ChatClient(connectMessage.username, readClient, client)
-                synchronized(connectedClients){
-                    connectedClients += chatClient
+                connectedClients += chatClient
 
-                    //informar todos os usuarios que existe um novo usuario
-                    connectedClients.forEach { client ->
-                        client.writeMessage(Message("Server", "${chatClient.username} entrou!"))
-                    }
+                //informar todos os usuarios que existe um novo usuario
+                connectedClients.forEach { client ->
+                    client.writeMessage(Message("Server", "${chatClient.username} entrou!"))
                 }
             }
         }
 
     }
-
-    fun dispose(){
-        listener?.stop()
-    }
-
 
     private fun sendSuccess(client: Socket, localPort: Int) {
         //escrever a porta que foi aberta para a conexao prval text : Stringivada
